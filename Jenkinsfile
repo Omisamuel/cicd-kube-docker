@@ -1,17 +1,11 @@
-pipeline {
-
     agent any
-/*
-	tools {
-        maven "maven3"
-    }
-*/
+
     environment {
         registry = "omisamkube/vproappdock"
         registryCredential = "dockerhub"
     }
 
-    stages{
+    stages {
         stage('BUILD'){
             steps {
                 sh 'mvn clean install -DskipTests'
@@ -48,23 +42,20 @@ pipeline {
         }
 
         stage('CODE ANALYSIS with SONARQUBE') {
-
             environment {
                 scannerHome = tool 'mysonarscanner4'
             }
-
             steps {
                 withSonarQubeEnv('sonar-pro') {
-                    sh '''${scannerHome}/bin/sonar-scanner -Dsonar.projectKey=vprofile \
-                   -Dsonar.projectName=vprofile-repo \
-                   -Dsonar.projectVersion=1.0 \
-                   -Dsonar.sources=src/ \
-                   -Dsonar.java.binaries=target/test-classes/com/visualpathit/account/controllerTest/ \
-                   -Dsonar.junit.reportsPath=target/surefire-reports/ \
-                   -Dsonar.jacoco.reportsPath=target/jacoco.exec \
-                   -Dsonar.java.checkstyle.reportPaths=target/checkstyle-result.xml'''
+                    sh "${scannerHome}/bin/sonar-scanner -Dsonar.projectKey=vprofile \
+                        -Dsonar.projectName=vprofile-repo \
+                        -Dsonar.projectVersion=1.0 \
+                        -Dsonar.sources=src/ \
+                        -Dsonar.java.binaries=target/test-classes/com/visualpathit/account/controllerTest/ \
+                        -Dsonar.junit.reportsPath=target/surefire-reports/ \
+                        -Dsonar.jacoco.reportsPath=target/jacoco.exec \
+                        -Dsonar.java.checkstyle.reportPaths=target/checkstyle-result.xml"
                 }
-
                 timeout(time: 10, unit: 'MINUTES') {
                     waitForQualityGate abortPipeline: true
                 }
@@ -74,36 +65,33 @@ pipeline {
         stage('Build app Image') {
             steps {
                 script {
-                dockerImage = docker.build registry + ":V$BUILD_NUMBER"
+                    dockerImage = docker.build(registry + ":V${BUILD_NUMBER}")
                 }
             }
         }
 
-        stage('Uplod Iamge') {
-            steps{
-                script{
+        stage('Upload Image') {
+            steps {
+                script {
                     docker.withRegistry('', registryCredential) {
-                        docker.Image.push("V$BUILD_NUMBER")
-                        docker.Image.push("latest")
-
+                        dockerImage.push("V${BUILD_NUMBER}")
+                        dockerImage.push("latest")
                     }
                 }
             }
         }
 
-        stage('Remove Unsed Docker image'){
-            steps{
-                sh "docker rmi $registry:V$BUILD_NUMBER"
+        stage('Remove Unused Docker Image'){
+            steps {
+                sh "docker rmi ${registry}:V${BUILD_NUMBER}"
             }
         }
 
         stage('Kubernetes Deploy') {
             agent {label 'KOPS'}
-                steps {
-                    sh "helm upgrade --install --force vprofile-stack helm/vprofilecharts --set appimage=${registry}:V${BUILD_NUMBER} --namespace prod"
-                }
+            steps {
+                sh "helm upgrade --install --force vprofile-stack helm/vprofilecharts --set appimage=${registry}:V${BUILD_NUMBER} --namespace prod"
+            }
         }
     }
-
-
 }
