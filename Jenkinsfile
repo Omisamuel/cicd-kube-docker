@@ -9,7 +9,7 @@ pipeline {
     environment {
         registry = "omisamkube/vproappdock"
         registryCredential = "dockerhub"
-        scannerHome = tool 'mysonarscanner4'
+
     }
 
     stages {
@@ -49,22 +49,26 @@ pipeline {
         }
 
         stage('CODE ANALYSIS with SONARQUBE') {
-            steps {
-                withSonarQubeEnv('sonar-pro') {
-                    sh "${scannerHome}/bin/sonar-scanner " +
-                    "-Dsonar.projectKey=vprofile " +
-                    "-Dsonar.projectName=vprofile-repo " +
-                    "-Dsonar.projectVersion=1.0 " +
-                    "-Dsonar.sources=src/ " +
-                    "-Dsonar.java.binaries=target/test-classes/com/visualpathit/account/controllerTest/ " +
-                    "-Dsonar.junit.reportsPath=target/surefire-reports/ " +
-                    "-Dsonar.jacoco.reportPaths=target/site/jacoco/jacoco.xml " +
-                    "-Dsonar.java.checkstyle.reportPaths=target/checkstyle-result.xml"
+            environment {
+                scannerHome = tool 'mysonarscanner4'
                 }
-                timeout(time: 20, unit: 'MINUTES') {
-                    waitForQualityGate abortPipeline: true
+
+                steps {
+                    withSonarQubeEnv('sonar-pro') {
+                        sh '''${scannerHome}/bin/sonar-scanner -Dsonar.projectKey=vprofile \
+                        -Dsonar.projectName=vprofile-repo \
+                        -Dsonar.projectVersion=1.0 \
+                        -Dsonar.sources=src/ \
+                        -Dsonar.java.binaries=target/test-classes/com/visualpathit/account/controllerTest/ \
+                        -Dsonar.junit.reportsPath=target/surefire-reports/ \
+                        -Dsonar.jacoco.reportsPath=target/jacoco.exec \
+                        -Dsonar.java.checkstyle.reportPaths=target/checkstyle-result.xml'''
+                        }
+
+                        timeout(time: 10, unit: 'MINUTES') {
+                            waitForQualityGate abortPipeline: true
+                        }
                 }
-            }
         }
 
         stage('Build app Image') {
@@ -79,8 +83,8 @@ pipeline {
             steps {
                 script {
                     docker.withRegistry('', registryCredential) {
-                        dockerImage.push("${BUILD_NUMBER}")
-                        dockerImage.push("latest")
+                    dockerImage.push("${BUILD_NUMBER}")
+                    dockerImage.push("latest")
                     }
                 }
             }
@@ -95,9 +99,10 @@ pipeline {
         stage('Kubernetes Deploy') {
             agent { label 'KOPS' }
             steps {
-                sh "helm upgrade --install --force vprofile-stack helm/vprofilecharts " +
-                "--set appimage=${registry}:V${BUILD_NUMBER} --namespace prod"
+                sh "helm upgrade --install --force vprofile-stack helm/vprofilecharts --set appimage=${registry}:V${BUILD_NUMBER} --namespace prod"
             }
         }
     }
 }
+
+
